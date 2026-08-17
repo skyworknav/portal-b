@@ -2,10 +2,8 @@ pipeline {
     agent any
 
     environment {
-        REGISTRY = '192.168.10.23:5000'
         IMAGE = '192.168.10.23:5000/portal-b'
         GITOPS_REPO = 'https://github.com/skyworknav/ton-devops.git'
-        GITOPS_BRANCH = 'production'
     }
 
     stages {
@@ -16,7 +14,7 @@ pipeline {
             }
         }
 
-        stage('Set Image Tag') {
+        stage('Determine Environment and Tag') {
             steps {
                 script {
                     env.SHORT_SHA = sh(
@@ -24,7 +22,21 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
-                    echo "Image tag: ${env.SHORT_SHA}"
+                    if (env.TAG_NAME) {
+                        // Production release
+                        env.DEPLOY_ENV = 'production'
+                        env.IMAGE_TAG = env.TAG_NAME.replaceFirst(/^v/, '')
+                        env.GITOPS_BRANCH = 'production'
+
+                        echo "Production release: ${env.IMAGE_TAG}"
+                    } else {
+                        // Normal branch build = staging
+                        env.DEPLOY_ENV = 'staging'
+                        env.IMAGE_TAG = "staging-${env.SHORT_SHA}"
+                        env.GITOPS_BRANCH = 'staging'
+
+                        echo "Staging build: ${env.IMAGE_TAG}"
+                    }
                 }
             }
         }
@@ -33,7 +45,7 @@ pipeline {
             steps {
                 sh '''
                     docker build \
-                      -t ${IMAGE}:${SHORT_SHA} \
+                      -t ${IMAGE}:${IMAGE_TAG} \
                       .
                 '''
             }
@@ -42,7 +54,7 @@ pipeline {
         stage('Push Docker Image') {
             steps {
                 sh '''
-                    docker push ${IMAGE}:${SHORT_SHA}
+                    docker push ${IMAGE}:${IMAGE_TAG}
                 '''
             }
         }
@@ -67,11 +79,11 @@ pipeline {
                         cd gitops
 
                         sed -i \
-                          "s|image: 192.168.10.23:5000/portal-b:.*|image: 192.168.10.23:5000/portal-b:${SHORT_SHA}|" \
+                          "s|image: 192.168.10.23:5000/portal-b:.*|image: 192.168.10.23:5000/portal-b:${IMAGE_TAG}|" \
                           k8s/deployment.yaml
 
                         sed -i \
-                          "/- name: APP_VERSION/{n;s/value: .*/value: \"${SHORT_SHA}\"/;}" \
+                          "/- name: APP_VERSION/{n;s/value: .*/value: \"${IMAGE_TAG}\"/;}" \
                           k8s/deployment.yaml
 
                         echo "Updated deployment:"
@@ -83,7 +95,7 @@ pipeline {
                         git add k8s/deployment.yaml
 
                         git commit \
-                          -m "Deploy portal-b ${SHORT_SHA} to production" \
+                          -m "Deploy portal-b ${IMAGE_TAG} to ${DEPLOY_ENV}" \
                           || echo "No changes to commit"
 
                         git push origin ${GITOPS_BRANCH}
