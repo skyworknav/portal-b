@@ -1,0 +1,6 @@
+.git
+.gitignore
+Jenkinsfile
+Dockerfile
+__pycache__
+*.pyc
