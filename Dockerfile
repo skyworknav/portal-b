@@ -7,10 +7,10 @@ COPY exam-source-requirements.txt .
 RUN pip install --no-cache-dir -r exam-source-requirements.txt
 
 COPY exam-source-app.py .
-COPY exam-source-config.json /app/config/config.json
+COPY exam-source-config.json /app/config/exam-source-config.json
 
 ENV PORT=5000
-ENV CONFIG_PATH=/app/config/config.json
+ENV CONFIG_PATH=/app/config/exam-source-config.json
 
 EXPOSE 5000
 
